@@ -12,16 +12,16 @@ class POSE_GUI:
 		self.root = tk.Tk()
 		self.root.title('POSE')
 		self.camera = USBCamera(width=self.WIDTH, height=self.HEIGHT, capture_fps=30)
-		self.camera.running = True
+		#self.camera.running = True
 		self.start_button = tk.Button(self.root, text= 'Start Game', command=self.game_start)
 		self.start_button.pack(side=tk.TOP, padx=5, pady=5)
 		self.exit_button = tk.Button(self.root, text= 'Quit', command=self.exit_app)
 		self.exit_button.pack(side=tk.TOP, padx=5, pady=5)
 		self.lmain = tk.Label(self.root)
 		self.lmain.pack()
-		
-	def execute(self, change):
-		img = change['new']
+	
+	def main_loop(self):
+		img = self.camera.read()
 		# data = preprocess(image)
 		# cmap, paf = model_trt(data)
 		# cmap, paf = cmap.detach().cpu(), paf.detach().cpu()
@@ -32,20 +32,19 @@ class POSE_GUI:
 		imgtk = ImageTk.PhotoImage(image=img)
 		self.lmain.imgtk = imgtk
 		self.lmain.configure(image=imgtk)
-
+		self.root.after(10, self.main_loop)
 
 	def game_start(self):
 		print("Game time started")
 		# Need to either start a Tkinter screen with the camera feed or use a matplotlib for it
-		self.camera.observe(self.execute, names='value')
+		self.main_loop() # Function that repeats itself to continously query the camera for a new image every 10 ms
 
 	def exit_app(self):
-		self.camera.unobserve_all()
 		self.camera.running = False
-		self.root.quit()
+		self.root.destroy()
 
-
+		
 
 if __name__ == '__main__':
 	POSE = POSE_GUI()
-	POSE.root.mainloop()
+	POSE.root.mainloop() # Tk main loop to keep window up
