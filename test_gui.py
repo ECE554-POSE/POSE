@@ -11,6 +11,7 @@ class POSE_GUI:
 		self.HEIGHT = 224
 		self.root = tk.Tk()
 		self.root.title('POSE')
+		self.root.geometry(str(self.WIDTH)+"x"+str(self.HEIGHT + 50))
 		self.camera = USBCamera(width=self.WIDTH, height=self.HEIGHT, capture_fps=30)
 		#self.camera.running = True
 		self.start_button = tk.Button(self.root, text= 'Start Game', command=self.game_start)
