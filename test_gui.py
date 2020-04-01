@@ -1,6 +1,6 @@
 import tkinter as tk
 from functools import partial
-from jetcam.csi_camera import CSICamera
+#from jetcam.csi_camera import CSICamera
 from jetcam.usb_camera import USBCamera
 from jetcam.utils import bgr8_to_jpeg
 from PIL import Image
@@ -23,12 +23,12 @@ from trt_pose.parse_objects import ParseObjects
 
 
 #Change this flag for using USB camera
-USBCam = 0
+USBCam = 1
 
 class POSE_GUI:
 	def __init__(self):
 
-		with open('/home/keith/POSE_Test/tasks/human_pose/human_pose.json', 'r') as f:
+		with open('../trt_pose/tasks/human_pose/human_pose.json', 'r') as f:
 			human_pose = json.load(f)
 
 		self.topology = trt_pose.coco.coco_category_to_topology(human_pose)
@@ -44,7 +44,7 @@ class POSE_GUI:
 		#Creation of model
 		#model_trt = torch2trt.torch2trt(model, [data], fp16_mode=True, max_workspace_size=1<<25)
 
-		self.OPTIMIZED_MODEL = '/home/keith/POSE_Test//tasks/human_pose/resnet18_baseline_att_224x224_A_epoch_249_trt.pth'
+		self.OPTIMIZED_MODEL = '../trt_pose/tasks/human_pose/resnet18_baseline_att_224x224_A_epoch_249_trt.pth'
 
 		#torch.save(model_trt.state_dict(), OPTIMIZED_MODEL)
 
@@ -82,8 +82,8 @@ class POSE_GUI:
 		self.exit_button = tk.Button(self.root, text= 'Quit', command=self.exit_app)
 		self.exit_button.pack(side=tk.TOP, padx=5, pady=5)
 		#Button for starting pose estimation
-		self.capture_button = tk.Button(self.root,text= 'Capture', command=self.process_POSE)
-		self.capture_button.pack(side=tk.TOP, padx=5, pady=5)
+		#self.capture_button = tk.Button(self.root,text= 'Capture', command=self.process_POSE)
+		#self.capture_button.pack(side=tk.TOP, padx=5, pady=5)
 		self.lmain = tk.Label(self.root)
 		self.lmain.pack()
 	
@@ -91,7 +91,13 @@ class POSE_GUI:
 	#Need to add button that cals pose estimation routine
 	def main_loop(self):
 		img = self.camera.read()
-		img=Image.fromarray(img)
+		data = self.preprocess(img)
+		cmap, paf = self.model_trt(data)
+		cmap, paf = cmap.detach().cpu(), paf.detach().cpu()
+		counts, objects, peaks = self.parse_objects(cmap, paf)#, cmap_threshold=0.15, link_threshold=0.15)
+		self.draw_objects(img, counts, objects, peaks)
+		#imgdraw = cv2.cvtColor(data ,cv2.COLOR_BGR2RGB)
+		img = Image.fromarray(img)
 		imgtk = ImageTk.PhotoImage(image=img)
 		self.lmain.imgtk = imgtk
 		self.lmain.configure(image=imgtk)
@@ -102,23 +108,21 @@ class POSE_GUI:
 		# Need to either start a Tkinter screen with the camera feed or use a matplotlib for it
 		self.main_loop() # Function that repeats itself to continously query the camera for a new image every 10 ms
 
-	def preprocess(self):
-			global device
-			device = torch.device('cuda')
-			self.image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-			self.image = PIL.Image.fromarray(image)
-			self.image = transforms.functional.to_tensor(image).to(device)
-			self.image.sub_(mean[:, None, None]).div_(std[:, None, None])
-			return image[None, ...]
+	def preprocess(self, img):
+		image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+		image = PIL.Image.fromarray(image)
+		image = transforms.functional.to_tensor(image).to(self.device)
+		image.sub_(self.mean[:, None, None]).div_(self.std[:, None, None])
+		return image[None, ...]
 			
-	def process_POSE(self):
-		data = self.preprocess(self)
-		cmap, paf = self.model_trt(data)
-		cmap, paf = cmap.detach().cpu(), paf.detach().cpu()
-		counts, objects, peaks = self.parse_objects(cmap, paf)#, cmap_threshold=0.15, link_threshold=0.15)
-		self.draw_objects(self.image, counts, objects, peaks)
-		imgdraw = cv2.cvtColor(self.image,cv2.COLOR_BGR2RGB)
-		return imgdraw
+	# def process_POSE(self, img):
+	# 	data = self.preprocess(img)
+	# 	cmap, paf = self.model_trt(data)
+	# 	cmap, paf = cmap.detach().cpu(), paf.detach().cpu()
+	# 	counts, objects, peaks = self.parse_objects(cmap, paf)#, cmap_threshold=0.15, link_threshold=0.15)
+	# 	self.draw_objects(data, counts, objects, peaks)
+	# 	imgdraw = cv2.cvtColor(data ,cv2.COLOR_BGR2RGB)
+	# 	return imgdraw
 				
 
 	def exit_app(self):
