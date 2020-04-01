@@ -1,7 +1,5 @@
 import tkinter as tk
 from functools import partial
-#from jetcam.csi_camera import CSICamera
-from jetcam.usb_camera import USBCamera
 from jetcam.utils import bgr8_to_jpeg
 from PIL import Image
 from PIL import ImageTk
@@ -25,10 +23,16 @@ from trt_pose.parse_objects import ParseObjects
 #Change this flag for using USB camera
 USBCam = 1
 
+if USBCam:
+	from jetcam.usb_camera import USBCamera
+else:
+	from jetcam.csi_camera import CSICamera
+
+
 class POSE_GUI:
 	def __init__(self):
 
-		with open('../trt_pose/tasks/human_pose/human_pose.json', 'r') as f:
+		with open('tasks/human_pose/human_pose.json', 'r') as f:
 			human_pose = json.load(f)
 
 		self.topology = trt_pose.coco.coco_category_to_topology(human_pose)
@@ -44,7 +48,7 @@ class POSE_GUI:
 		#Creation of model
 		#model_trt = torch2trt.torch2trt(model, [data], fp16_mode=True, max_workspace_size=1<<25)
 
-		self.OPTIMIZED_MODEL = '../trt_pose/tasks/human_pose/resnet18_baseline_att_224x224_A_epoch_249_trt.pth'
+		self.OPTIMIZED_MODEL = 'tasks/human_pose/resnet18_baseline_att_224x224_A_epoch_249_trt.pth'
 
 		#torch.save(model_trt.state_dict(), OPTIMIZED_MODEL)
 
@@ -65,16 +69,10 @@ class POSE_GUI:
 		self.root.title('POSE')
 		self.root.geometry(str(self.WIDTH)+"x"+str(self.HEIGHT + 50))
 
-
-
-
 		if USBCam:
 			self.camera = USBCamera(width=self.WIDTH, height=self.HEIGHT, capture_fps=30)
 		else:
 			self.camera = CSICamera(width=self.WIDTH, height=self.HEIGHT, capture_fps=30)
-
-
-
 
 		#self.camera.running = True
 		self.start_button = tk.Button(self.root, text= 'Start Game', command=self.game_start)
@@ -113,17 +111,7 @@ class POSE_GUI:
 		image = PIL.Image.fromarray(image)
 		image = transforms.functional.to_tensor(image).to(self.device)
 		image.sub_(self.mean[:, None, None]).div_(self.std[:, None, None])
-		return image[None, ...]
-			
-	# def process_POSE(self, img):
-	# 	data = self.preprocess(img)
-	# 	cmap, paf = self.model_trt(data)
-	# 	cmap, paf = cmap.detach().cpu(), paf.detach().cpu()
-	# 	counts, objects, peaks = self.parse_objects(cmap, paf)#, cmap_threshold=0.15, link_threshold=0.15)
-	# 	self.draw_objects(data, counts, objects, peaks)
-	# 	imgdraw = cv2.cvtColor(data ,cv2.COLOR_BGR2RGB)
-	# 	return imgdraw
-				
+		return image[None, ...]	
 
 	def exit_app(self):
 		self.camera.running = False
