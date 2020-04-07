@@ -1,7 +1,5 @@
 import tkinter as tk
 from functools import partial
-from jetcam.csi_camera import CSICamera
-#from jetcam.usb_camera import USBCamera
 from jetcam.utils import bgr8_to_jpeg
 from PIL import Image
 from PIL import ImageTk
@@ -23,7 +21,7 @@ from trt_pose.parse_objects import ParseObjects
 
 
 #Change this flag for using USB camera
-USBCam = 0
+USBCam = 1
 
 if USBCam:
 	from jetcam.usb_camera import USBCamera
@@ -52,7 +50,7 @@ class POSE_GUI:
 		#Creation of modelor
 		#model_trt = torch2trt.torch2trt(model, [data], fp16_mode=True, max_workspace_size=1<<25)
 
-		self.OPTIMIZED_MODEL = './resnet18_baseline_att_224x224_A_epoch_249_trt.pth'
+		self.OPTIMIZED_MODEL = './tasks/human_pose/resnet18_baseline_att_224x224_A_epoch_249_trt.pth'
 
 		#torch.save(model_trt.state_dict(), OPTIMIZED_MODEL)
 
@@ -67,30 +65,44 @@ class POSE_GUI:
 		self.parse_objects = ParseObjects(self.topology)
 		self.draw_objects = DrawObjects(self.topology)
 
-		self.WIDTH = 224
-		self.HEIGHT = 224
 		self.root = tk.Tk()
 		self.root.title('POSE')
-		self.root.geometry(str(self.WIDTH*2+100)+"x"+str(self.HEIGHT*2 + 100))
+		self.root.geometry(str(self.WIDTH*2+100)+"x"+str(self.HEIGHT + 150))
 
-		self.camera = CSICamera(width=self.WIDTH, height=self.HEIGHT, capture_fps=30)
+		if USBCam:
+			self.camera = USBCamera(width=self.WIDTH, height=self.HEIGHT, capture_fps=30)
+		else:
+			self.camera = CSICamera(width=self.WIDTH, height=self.HEIGHT, capture_fps=30)
 
-		#self.camera.running = True
-		self.start_button = tk.Button(self.root, text= 'Start Game', command=self.game_start)
-		self.start_button.pack(side=tk.BOTTOM, padx=5, pady=0)
-		self.exit_button = tk.Button(self.root, text= 'Quit', command=self.exit_app)
-		self.exit_button.pack(side=tk.BOTTOM, padx=5, pady=0)
-		#Button for starting pose estimation
-		#self.capture_button = tk.Button(self.root,text= 'Capture', command=self.process_POSE)
-		#self.capture_button.pack(side=tk.TOP, padx=5, pady=5)
-		self.lmain = tk.Label(self.root)
+		# Organizing GUI
+		# Rows
+		self.im_row = tk.Frame(self.root)
+		self.but_row = tk.Frame(self.root)
+		self.im_row.pack(side=tk.TOP, fill=tk.Y, padx = 5, pady = 5)
+		self.but_row.pack(side=tk.BOTTOM, fill=tk.Y, padx = 5, pady = 5)
+
+		# Image row
+		self.lmain = tk.Label(self.im_row)
 		self.lmain.pack(side=tk.LEFT, padx=0, pady=0)
+		self.rmain = tk.Label(self.im_row)
+		self.rmain.pack(side=tk.RIGHT, padx=0, pady=0)
 
-		self.rmain = tk.Label(self.root)
-		self.rmain.pack(side=tk.LEFT, padx=0, pady=0)
+		# Button row
+		# Create and pack (show) the starting buttons
+		self.start_button = tk.Button(self.but_row, text= 'Start Game', command=self.game_start)
+		self.start_button.pack(side=tk.TOP, padx=5, pady=0)
+		self.exit_button = tk.Button(self.but_row, text= 'Quit', command=self.exit_app)
+		self.exit_button.pack(side=tk.BOTTOM, padx=5, pady=0)
 
+		# Create other buttons but leave them hidden
+		self.pose_button = tk.Button(self.but_row, text= 'Estimate Pose', command=self.pose_estimate)
+		self.stop_button = tk.Button(self.but_row, text= 'Stop Game', command=self.game_stop)
+
+		self.running = False
+		
 		self.objx = []
 		self.objy = []
+
 	#Camera Displays Here
 	#Need to add button that cals pose estimation routine
 	def main_loop(self):
@@ -106,7 +118,8 @@ class POSE_GUI:
 		imgtk = ImageTk.PhotoImage(image=img)
 		self.lmain.imgtk = imgtk
 		self.lmain.configure(image=imgtk)
-		self.root.after(10, self.main_loop)
+		if self.running:		
+			self.root.after(10, self.main_loop)
 
 	def pose_estimate(self):
 		img = self.img
@@ -135,9 +148,9 @@ class POSE_GUI:
 					peak = peaks[0][j][k]
 					x = round(float(peak[1]) * width)
 					y = round(float(peak[0]) * height)
-					self.objx[objcnt] = x
-					self.objy[objcnt] = y
-					self.objcnt = objcnt+1
+					self.objx.insert(objcnt, x)
+					self.objy.insert(objcnt, y)
+					objcnt = objcnt+1
 					print("OBJ #",objcnt)
 					print("OBJx = ",x)
 					print("OBJy = ",y)
@@ -150,31 +163,29 @@ class POSE_GUI:
 
 	def game_start(self):
 		print("Game time started")
-		self.pose_button = tk.Button(self.root, text= 'Estimate Pose', command=self.pose_estimate)
-		self.pose_button.pack(side=tk.BOTTOM, padx=5, pady=0)
-		# Need to either start a Tkinter screen with the camera feed or use a matplotlib for it
+		# Hide the start button and place the estimate pose button and stop buttons instead
+		self.start_button.pack_forget()
+		self.pose_button.pack(side=tk.TOP, padx=5, pady=0)
+		self.stop_button.pack(side=tk.TOP, padx=5, pady=0)
+		self.running = True # Context flag to let the loop code know to repeat itself
 		self.main_loop() # Function that repeats itself to continously query the camera for a new image every 10 ms
+
+	def game_stop(self):
+		print("Game time stopped")
+		# Hide the stop and estimate buttons and show start button again
+		self.stop_button.pack_forget()
+		self.start_button.pack(side=tk.TOP, padx=5, pady=0)
+		self.pose_button.pack_forget()
+		self.running = False # Set context flag to false to have code stop repeating itself
 
 	def preprocess(self, img):
 		image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 		image = PIL.Image.fromarray(image)
 		image = transforms.functional.to_tensor(image).to(self.device)
 		image.sub_(self.mean[:, None, None]).div_(self.std[:, None, None])
-		return image[None, ...]
-			
-	# def process_POSE(self, img):
-	# 	data = self.preprocess(img)
-	# 	cmap, paf = self.model_trt(data)
-	# 	cmap, paf = cmap.detach().cpu(), paf.detach().cpu()
-	# 	counts, objects, peaks = self.parse_objects(cmap, paf)#, cmap_threshold=0.15, link_threshold=0.15)
-	# 	self.draw_objects(data, counts, objects, peaks)
-	# 	imgdraw = cv2.cvtColor(data ,cv2.COLOR_BGR2RGB)
-	# 	return imgdrawi
-				
+		return image[None, ...]				
 
 	def exit_app(self):
-		self.camera.running = False
-		self.camera.unobserve_all()
 		self.root.destroy()
 
 		
