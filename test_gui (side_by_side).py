@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.image as mpimg
 import cv2
 import json
+import os
 import trt_pose.coco
 import trt_pose.models
 import torch
@@ -40,18 +41,27 @@ class POSE_GUI:
 		self.num_parts = len(human_pose['keypoints'])
 		self.num_links = len(human_pose['skeleton'])
 
+		self.path = './images/'
+		
+		# Load all image filenames in image directory into a list
+		self.levels = []
+		for r, d, f in os.walk(self.path):
+			for file in f:
+				if '.jpg' in file or '.png' in file:
+					self.levels.append(self.path + file)
+		print(self.levels)
+
+		
 		self.WIDTH = 224
 		self.HEIGHT = 224
+		self.thresh = 127
+		# self.levels = ['images/leftb_rightw.jpg', 'images/leftb_rightw.png']
+		self.iteration = 0
 
 		self.data = torch.zeros((1, 3, self.HEIGHT, self.WIDTH)).cuda()
 
 		self.mdelay_sec = 10
 		self.mtick = self.mdelay_sec
-
-		self.mask_img=cv2.imread('images/leftb_rightw.jpg', cv2.IMREAD_GRAYSCALE)
-
-		self.thresh=127
-		self.mask=cv2.threshold(self.mask_img, self.thresh, 255, cv2.THRESH_BINARY)[1]
 
 		self.OPTIMIZED_MODEL = './tasks/human_pose/resnet18_baseline_att_224x224_A_epoch_249_trt.pth'
 
@@ -105,7 +115,6 @@ class POSE_GUI:
 		self.exit_button = tk.Button(self.but_row, text= 'Quit', command=self.exit_app)
 		self.exit_button.pack(side=tk.BOTTOM, padx=5, pady=0)
 
-
 		# Create other buttons but leave them hidden
 		self.pose_button = tk.Button(self.but_row, text= 'Estimate Pose', command=self.pose_estimate)
 		self.stop_button = tk.Button(self.but_row, text= 'Stop Game', command=self.game_stop)
@@ -117,13 +126,7 @@ class POSE_GUI:
 	def main_loop(self):
 		if self.running:
 			img = self.camera.read()
-			self.img = img
-			# data = self.preprocess(img)
-			# cmap, paf = self.model_trt(data)
-			# cmap, paf = cmap.detach().cpu(), paf.detach().cpu()
-			# counts, objects, peaks = self.parse_objects(cmap, paf)#, cmap_threshold=0.15, link_threshold=0.15)
-			# self.draw_objects(img, counts, objects, peaks)
-			#imgdraw = cv2.cvtColor(data ,cv2.COLOR_BGR2RGB)
+			self.img = img # Load image into context variable
 			img = Image.fromarray(img)
 			imgtk = ImageTk.PhotoImage(image=img)
 			self.lmain.imgtk = imgtk
@@ -144,7 +147,6 @@ class POSE_GUI:
 		height = img.shape[0]
 		width = img.shape[1]
 		objcnt = 0
-		K = topology.shape[0]
 		count = int(counts[0])
 		points = []
 		for i in range(count):
@@ -167,12 +169,12 @@ class POSE_GUI:
 
 		return points
 
-	def pose_score(self, points):
-		# Locate points in mask
+	def pose_score(self, points, mask):
+		# Locate points in mask and mark if point is over mask or not
 		for point in points:
 			xi = point[0]
 			yi = point[1]
-			point_val = self.mask[yi, xi]
+			point_val = mask[yi, xi]
 			print("OBJx = ",xi)
 			print("OBJy = ",yi)
 			print(point_val)
@@ -180,7 +182,7 @@ class POSE_GUI:
 				print ('Correct!')
 			else:
 				print ('Wrong!')
-		img2 = Image.fromarray(self.mask)
+		img2 = Image.fromarray(mask)
 		#self.draw_objects(img2, counts, objects, peaks)
 		imgtk2 = ImageTk.PhotoImage(image=img2)
 		self.mmain.imgtk = imgtk2
@@ -188,13 +190,30 @@ class POSE_GUI:
 
 	def state_handler(self):
 		print("State Handler")
+
+		# Load mask desired for current iteration
+		level = self.levels[self.iteration]
+		print(level)
+		mask_img=cv2.imread(level, cv2.IMREAD_GRAYSCALE)
+		mask=cv2.threshold(mask_img, self.thresh, 255, cv2.THRESH_BINARY)[1]
+
+		# Run pose estimation and return list of identified coordinates
 		calc_points = self.pose_estimate()
-		self.pose_score(calc_points)
+		
+		# Get a score based on correct points over mask
+		# TODO: Retrieve a score into a variable
+		self.pose_score(calc_points, mask)
+
+		# Change iteration counter to move to next image for next time it is called
+		if self.iteration < (len(self.levels) - 1):
+			self.iteration = self.iteration + 1
+		else:
+			self.iteration = 0
 
 	def countdown_handler(self):
 		if self.running:
 			lbl = "Time Remaining {}".format(self.mtick)
-			print(lbl)
+			#print(lbl)
 			self.timer_label['text'] = lbl
 			self.mtick = self.mtick - 1
 			if self.mtick == 0:
@@ -210,7 +229,7 @@ class POSE_GUI:
 		self.pose_button.pack(side=tk.TOP, padx=5, pady=0)
 		self.stop_button.pack(side=tk.TOP, padx=5, pady=0)
 		self.running = True # Context flag to let the loop code know to repeat itself
-		self.countdown_handler()
+		self.countdown_handler() # Function that loops to control pose estimation loop
 		self.main_loop() # Function that repeats itself to continously query the camera for a new image every 10 ms
 
 	def game_stop(self):
