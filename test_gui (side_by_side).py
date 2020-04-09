@@ -33,14 +33,13 @@ else:
 class POSE_GUI:
 	def __init__(self):
 
-		with open('./tasks/human_pose/human_pose.json', 'r') as f:
-			human_pose = json.load(f)
-
-		self.topology = trt_pose.coco.coco_category_to_topology(human_pose)
-
-		self.num_parts = len(human_pose['keypoints'])
-		self.num_links = len(human_pose['skeleton'])
-
+		# Context variable declarations and loading		
+		self.running = False
+		self.WIDTH = 224
+		self.HEIGHT = 224
+		self.thresh = 127
+		self.iteration = 0
+		self.minimum_joints = 1
 		self.path = './images/'
 		
 		# Load all image filenames in image directory into a list
@@ -50,42 +49,42 @@ class POSE_GUI:
 				if '.jpg' in file or '.png' in file:
 					self.levels.append(self.path + file)
 		print(self.levels)
-
 		
-		self.WIDTH = 224
-		self.HEIGHT = 224
-		self.thresh = 127
-		# self.levels = ['images/leftb_rightw.jpg', 'images/leftb_rightw.png']
-		self.iteration = 0
-
-		self.data = torch.zeros((1, 3, self.HEIGHT, self.WIDTH)).cuda()
-
 		self.mdelay_sec = 10
 		self.mtick = self.mdelay_sec
+		
+		#Loading model and model data
+		with open('./tasks/human_pose/human_pose.json', 'r') as f:
+			human_pose = json.load(f)
+
+		self.topology = trt_pose.coco.coco_category_to_topology(human_pose)
+
+		self.num_parts = len(human_pose['keypoints'])
+		self.num_links = len(human_pose['skeleton'])
+		
+		self.data = torch.zeros((1, 3, self.HEIGHT, self.WIDTH)).cuda()
 
 		self.OPTIMIZED_MODEL = './tasks/human_pose/resnet18_baseline_att_224x224_A_epoch_249_trt.pth'
-
-		#torch.save(model_trt.state_dict(), OPTIMIZED_MODEL)
-
 		self.model_trt = TRTModule()
 		self.model_trt.load_state_dict(torch.load(self.OPTIMIZED_MODEL))
 
 		self.mean = torch.Tensor([0.485, 0.456, 0.406]).cuda()
 		self.std = torch.Tensor([0.229, 0.224, 0.225]).cuda()
 		self.device = torch.device('cuda')
-
 	
 		self.parse_objects = ParseObjects(self.topology)
 		self.draw_objects = DrawObjects(self.topology)
 
-		self.root = tk.Tk()
-		self.root.title('POSE')
-		self.root.geometry(str(self.WIDTH*3+100)+"x"+str(self.HEIGHT + 150))
-
+		# Start camera
 		if USBCam:
 			self.camera = USBCamera(width=self.WIDTH, height=self.HEIGHT, capture_fps=30)
 		else:
 			self.camera = CSICamera(width=self.WIDTH, height=self.HEIGHT, capture_fps=30)
+
+		# Creating main GUI
+		self.root = tk.Tk()
+		self.root.title('POSE')
+		self.root.geometry(str(self.WIDTH*3+100)+"x"+str(self.HEIGHT + 150))
 
 		# Organizing GUI
 		# Rows
@@ -118,8 +117,6 @@ class POSE_GUI:
 		# Create other buttons but leave them hidden
 		self.pose_button = tk.Button(self.but_row, text= 'Estimate Pose', command=self.pose_estimate)
 		self.stop_button = tk.Button(self.but_row, text= 'Stop Game', command=self.game_stop)
-
-		self.running = False
 
 	#Camera Displays Here
 	#Need to add button that cals pose estimation routine
@@ -170,23 +167,31 @@ class POSE_GUI:
 		return points
 
 	def pose_score(self, points, mask):
+		if len(points) < self.minimum_joints:
+			return None # Return a score of 0 if no pose detected
+		
+		correct = 0
 		# Locate points in mask and mark if point is over mask or not
 		for point in points:
 			xi = point[0]
 			yi = point[1]
 			point_val = mask[yi, xi]
-			print("OBJx = ",xi)
-			print("OBJy = ",yi)
-			print(point_val)
+			print("Point: "+str(xi)+", "+str(yi))
+			# print("OBJx = ",xi)
+			# print("OBJy = ",yi)
+			# print(point_val)
 			if point_val >= 255:
 				print ('Correct!')
+				correct = correct + 1
 			else:
 				print ('Wrong!')
+		score = (correct / len(points)) * 100
 		img2 = Image.fromarray(mask)
 		#self.draw_objects(img2, counts, objects, peaks)
 		imgtk2 = ImageTk.PhotoImage(image=img2)
 		self.mmain.imgtk = imgtk2
 		self.mmain.configure(image=imgtk2)
+		return score
 
 	def state_handler(self):
 		print("State Handler")
@@ -202,8 +207,13 @@ class POSE_GUI:
 		
 		# Get a score based on correct points over mask
 		# TODO: Retrieve a score into a variable
-		self.pose_score(calc_points, mask)
+		score = self.pose_score(calc_points, mask)
 
+		if score is not None:		
+			print ("You scored " + str(score))
+		else:
+			print("Didn't detect a pose from player.")
+		
 		# Change iteration counter to move to next image for next time it is called
 		if self.iteration < (len(self.levels) - 1):
 			self.iteration = self.iteration + 1
