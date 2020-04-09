@@ -45,10 +45,13 @@ class POSE_GUI:
 
 		self.data = torch.zeros((1, 3, self.HEIGHT, self.WIDTH)).cuda()
 
+		self.mdelay_sec = 10
+		self.mtick = self.mdelay_sec
 
+		self.mask_img=cv2.imread('images/leftb_rightw.jpg', cv2.IMREAD_GRAYSCALE)
 
-		#Creation of modelor
-		#model_trt = torch2trt.torch2trt(model, [data], fp16_mode=True, max_workspace_size=1<<25)
+		self.thresh=127
+		self.mask=cv2.threshold(self.mask_img, self.thresh, 255, cv2.THRESH_BINARY)[1]
 
 		self.OPTIMIZED_MODEL = './tasks/human_pose/resnet18_baseline_att_224x224_A_epoch_249_trt.pth'
 
@@ -67,7 +70,7 @@ class POSE_GUI:
 
 		self.root = tk.Tk()
 		self.root.title('POSE')
-		self.root.geometry(str(self.WIDTH*2+100)+"x"+str(self.HEIGHT + 150))
+		self.root.geometry(str(self.WIDTH*3+100)+"x"+str(self.HEIGHT + 150))
 
 		if USBCam:
 			self.camera = USBCamera(width=self.WIDTH, height=self.HEIGHT, capture_fps=30)
@@ -76,14 +79,22 @@ class POSE_GUI:
 
 		# Organizing GUI
 		# Rows
+		self.top_row = tk.Frame(self.root)
 		self.im_row = tk.Frame(self.root)
 		self.but_row = tk.Frame(self.root)
+		self.top_row.pack(side=tk.TOP, fill=tk.Y, padx = 5, pady = 5)
 		self.im_row.pack(side=tk.TOP, fill=tk.Y, padx = 5, pady = 5)
 		self.but_row.pack(side=tk.BOTTOM, fill=tk.Y, padx = 5, pady = 5)
+
+		# Top row
+		self.timer_label = tk.Label(self.top_row, text='Countdown Timer')
+		self.timer_label.pack(side=tk.TOP, padx=5, pady=0)
 
 		# Image row
 		self.lmain = tk.Label(self.im_row)
 		self.lmain.pack(side=tk.LEFT, padx=0, pady=0)
+		self.mmain = tk.Label(self.im_row)
+		self.mmain.pack(side=tk.RIGHT, padx=0, pady=0)
 		self.rmain = tk.Label(self.im_row)
 		self.rmain.pack(side=tk.RIGHT, padx=0, pady=0)
 
@@ -94,52 +105,49 @@ class POSE_GUI:
 		self.exit_button = tk.Button(self.but_row, text= 'Quit', command=self.exit_app)
 		self.exit_button.pack(side=tk.BOTTOM, padx=5, pady=0)
 
+
 		# Create other buttons but leave them hidden
 		self.pose_button = tk.Button(self.but_row, text= 'Estimate Pose', command=self.pose_estimate)
 		self.stop_button = tk.Button(self.but_row, text= 'Stop Game', command=self.game_stop)
 
 		self.running = False
-		
-		self.objx = []
-		self.objy = []
 
 	#Camera Displays Here
 	#Need to add button that cals pose estimation routine
 	def main_loop(self):
-		img = self.camera.read()
-		self.img = img
-		# data = self.preprocess(img)
-		# cmap, paf = self.model_trt(data)
-		# cmap, paf = cmap.detach().cpu(), paf.detach().cpu()
-		# counts, objects, peaks = self.parse_objects(cmap, paf)#, cmap_threshold=0.15, link_threshold=0.15)
-		# self.draw_objects(img, counts, objects, peaks)
-		#imgdraw = cv2.cvtColor(data ,cv2.COLOR_BGR2RGB)
-		img = Image.fromarray(img)
-		imgtk = ImageTk.PhotoImage(image=img)
-		self.lmain.imgtk = imgtk
-		self.lmain.configure(image=imgtk)
-		if self.running:		
+		if self.running:
+			img = self.camera.read()
+			self.img = img
+			# data = self.preprocess(img)
+			# cmap, paf = self.model_trt(data)
+			# cmap, paf = cmap.detach().cpu(), paf.detach().cpu()
+			# counts, objects, peaks = self.parse_objects(cmap, paf)#, cmap_threshold=0.15, link_threshold=0.15)
+			# self.draw_objects(img, counts, objects, peaks)
+			#imgdraw = cv2.cvtColor(data ,cv2.COLOR_BGR2RGB)
+			img = Image.fromarray(img)
+			imgtk = ImageTk.PhotoImage(image=img)
+			self.lmain.imgtk = imgtk
+			self.lmain.configure(image=imgtk)		
 			self.root.after(10, self.main_loop)
 
 	def pose_estimate(self):
+		# Run pose estimation and display overlay
 		img = self.img
 		data = self.preprocess(img)
 		cmap, paf = self.model_trt(data)
 		cmap, paf = cmap.detach().cpu(), paf.detach().cpu()
 		counts, objects, peaks = self.parse_objects(cmap, paf)#, cmap_threshold=0.15, link_threshold=0.15)
-
 		self.draw_objects(img, counts, objects, peaks)
 
-
-
+		# Extract point coordinates
 		topology = self.topology
 		height = img.shape[0]
 		width = img.shape[1]
 		objcnt = 0
 		K = topology.shape[0]
 		count = int(counts[0])
+		points = []
 		for i in range(count):
-			color = (0,255,0)
 			obj = objects[0][i]
 			C = obj.shape[0]
 			for j in range(C):
@@ -148,18 +156,52 @@ class POSE_GUI:
 					peak = peaks[0][j][k]
 					x = round(float(peak[1]) * width)
 					y = round(float(peak[0]) * height)
-					self.objx.insert(objcnt, x)
-					self.objy.insert(objcnt, y)
+					points.insert(objcnt, [x, y])
 					objcnt = objcnt+1
-					print("OBJ #",objcnt)
-					print("OBJx = ",x)
-					print("OBJy = ",y)
 
 
 		img = Image.fromarray(img)
 		imgtk = ImageTk.PhotoImage(image=img)
 		self.rmain.imgtk = imgtk
 		self.rmain.configure(image=imgtk)
+
+		return points
+
+	def pose_score(self, points):
+		# Locate points in mask
+		for point in points:
+			xi = point[0]
+			yi = point[1]
+			point_val = self.mask[yi, xi]
+			print("OBJx = ",xi)
+			print("OBJy = ",yi)
+			print(point_val)
+			if point_val >= 255:
+				print ('Correct!')
+			else:
+				print ('Wrong!')
+		img2 = Image.fromarray(self.mask)
+		#self.draw_objects(img2, counts, objects, peaks)
+		imgtk2 = ImageTk.PhotoImage(image=img2)
+		self.mmain.imgtk = imgtk2
+		self.mmain.configure(image=imgtk2)
+
+	def state_handler(self):
+		print("State Handler")
+		calc_points = self.pose_estimate()
+		self.pose_score(calc_points)
+
+	def countdown_handler(self):
+		if self.running:
+			lbl = "Time Remaining {}".format(self.mtick)
+			print(lbl)
+			self.timer_label['text'] = lbl
+			self.mtick = self.mtick - 1
+			if self.mtick == 0:
+				self.state_handler
+				self.mtick = self.mdelay_sec
+				self.state_handler()
+			self.root.after(1000, self.countdown_handler)
 
 	def game_start(self):
 		print("Game time started")
@@ -168,6 +210,7 @@ class POSE_GUI:
 		self.pose_button.pack(side=tk.TOP, padx=5, pady=0)
 		self.stop_button.pack(side=tk.TOP, padx=5, pady=0)
 		self.running = True # Context flag to let the loop code know to repeat itself
+		self.countdown_handler()
 		self.main_loop() # Function that repeats itself to continously query the camera for a new image every 10 ms
 
 	def game_stop(self):
