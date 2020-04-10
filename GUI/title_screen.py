@@ -1,4 +1,5 @@
 import tkinter as Tk
+from tkinter import messagebox
 from button_panel import ButtonPanel
 from functools import partial
 from jetcam.utils import bgr8_to_jpeg
@@ -144,6 +145,10 @@ class MainGUI:
 		# unpack unused widgets
 		self.pose_label.pack_forget()
 
+		# Reset mask object
+		self.mask_label.configure(image='')
+		self.mask = None
+
 		# Build select frame
 		self.titleVar.set("Select Your Pose")
 		self.desText.configure(text ="Select an Option from Below")
@@ -159,6 +164,11 @@ class MainGUI:
 
 
 	def updateToPose(self):
+		# Check a mask was selected first. If not, display error and stay at previous state
+		if self.mask is None:
+			messagebox.showerror("No mask loaded", "Please select a course on the dropdown menu")
+			return
+		
 		# unpack unused widgets
 		self.dropDown.pack_forget()
 
@@ -278,7 +288,7 @@ class MainGUI:
 		image = transforms.functional.to_tensor(image).to(self.device)
 		image.sub_(self.mean[:, None, None]).div_(self.std[:, None, None])
 		return image[None, ...]	
-		
+
 	def blankCommand():
 		print("Error: Button should not be pushed")
 
