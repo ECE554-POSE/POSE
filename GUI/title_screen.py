@@ -100,17 +100,20 @@ class MainGUI:
 		#Parse map names to develop choices
 		#group map names into array
 		self.levels = []
-		for r, d, f in os.walk(self.path):
-			for file in f:
-				if '.jpg' in file or '.png' in file:
-					self.levels.append(self.path + file)
-		print(self.levels)
-		#choices = {'These', 'are', 'temporary', 'choices'}
+		#for r, d, f in os.walk(self.path):
+		#	for file in f:
+		#		if '.jpg' in file or '.png' in file:
+		#			self.levels.append(self.path + file)
+		#print(self.levels)
+
+		choices = ["Easy", "Medium", "Hard"]
 		#Put map names in combo box	
 		self.ddVar = Tk.StringVar()
 		self.ddVar.set('Select a Choice')
-		self.dropDown = Tk.OptionMenu(self.frame, self.ddVar, *self.levels)
-		self.ddVar.trace('w', self.mask_select)
+		self.dropDown = Tk.OptionMenu(self.frame, self.ddVar, *choices)
+		
+		#Not present in my code, but not sure if we need it
+		#self.ddVar.trace('w', self.mask_select)
 
 
 		
@@ -142,6 +145,10 @@ class MainGUI:
 
 
 	def updateToSelect(self):
+		# reset possible levels
+		self.levels = []
+		self.ddVar.set('Select a Choice')
+
 		# unpack unused widgets
 		self.pose_label.pack_forget()
 
@@ -164,10 +171,19 @@ class MainGUI:
 
 
 	def updateToPose(self):
-		# Check a mask was selected first. If not, display error and stay at previous state
-		if self.mask is None:
-			messagebox.showerror("No mask loaded", "Please select a course on the dropdown menu")
+		# Check for valid difficulty selection and cancel if invalid
+		curSelection = self.ddVar.get()
+		if(curSelection == "Select a Choice"):
 			return
+		
+		# grab poses from directory
+		curPath = self.path + curSelection
+		print(curPath)
+		for r, d, f in os.walk(curPath):
+			for file in f:
+				if '.jpg' in file or '.png' in file:
+					self.levels.append(curPath + file)
+		print(self.levels)
 		
 		# unpack unused widgets
 		self.dropDown.pack_forget()
