@@ -36,7 +36,7 @@ class MainGUI:
 		self.WIDTH = 224
 		self.HEIGHT = 224
 		self.thresh = 127
-		self.iteration = 0
+		self.round = 0
 		self.minimum_joints = 1
 		self.path = './images/'		
 		self.mdelay_sec = 10
@@ -92,19 +92,12 @@ class MainGUI:
 		# Create editable description label
 		self.desTextVar = "Please select an option from the right"
 		self.desText = Tk.Label(self.frame, text=self.desTextVar, font="Verdana 12")
-		
-
 
 		#Create Combobox for selection (Steps are currently in comments)
 		#Grab maps from repository
 		#Parse map names to develop choices
 		#group map names into array
 		self.levels = []
-		#for r, d, f in os.walk(self.path):
-		#	for file in f:
-		#		if '.jpg' in file or '.png' in file:
-		#			self.levels.append(self.path + file)
-		#print(self.levels)
 
 		choices = ["Easy", "Medium", "Hard"]
 		#Put map names in combo box	
@@ -112,11 +105,10 @@ class MainGUI:
 		self.ddVar.set('Select a Choice')
 		self.dropDown = Tk.OptionMenu(self.frame, self.ddVar, *choices)
 		
-		#Not present in my code, but not sure if we need it
-		#self.ddVar.trace('w', self.mask_select)
+		# This function binds a function that loads all images for level upon the selection of 
+		# an option in the dropdown menu
+		self.ddVar.trace('w', self.levels_select)
 
-
-		
 		# Create inital button panel
 		self.buttonPanel = ButtonPanel(root)
 
@@ -137,16 +129,14 @@ class MainGUI:
 		self.titleVar.set("Pose Estimation Game")
 		self.desText.configure(text ="Please select an option from the right")
 		
-
 		# set button commands
 		self.buttonPanel.button1.configure(text="Pose Now!", command=lambda:MainGUI.updateToSelect(self))
 		self.buttonPanel.button2.configure(text="Exit",command=self.root.destroy)
 
-
-
 	def updateToSelect(self):
 		# reset possible levels
 		self.levels = []
+		self.round = 0
 		self.ddVar.set('Select a Choice')
 
 		# unpack unused widgets
@@ -176,17 +166,19 @@ class MainGUI:
 		if(curSelection == "Select a Choice"):
 			return
 		
-		# grab poses from directory
-		curPath = self.path + curSelection
-		print(curPath)
-		for r, d, f in os.walk(curPath):
-			for file in f:
-				if '.jpg' in file or '.png' in file:
-					self.levels.append(curPath + file)
-		print(self.levels)
-		
 		# unpack unused widgets
 		self.dropDown.pack_forget()
+		self.pose_label.pack_forget()
+
+		# Select mask to use for this round
+		mask_img=cv2.imread(self.levels[self.round], cv2.IMREAD_GRAYSCALE)
+		self.mask=cv2.threshold(mask_img, self.thresh, 255, cv2.THRESH_BINARY)[1]
+
+		# Show mask to user
+		img = Image.fromarray(self.mask)
+		imgtk = ImageTk.PhotoImage(image=img)
+		self.mask_label.imgtk = imgtk
+		self.mask_label.configure(image=imgtk)	
 
 
 		self.titleVar.set("Pose Now")
@@ -233,7 +225,7 @@ class MainGUI:
 
 	def pose_score(self, points):
 		if len(points) < self.minimum_joints:
-			return None # Return a score of 0 if no pose detected
+			return None # Return no score if no pose detected
 		
 		correct = 0
 		# Locate points in mask and mark if point is over mask or not
@@ -268,8 +260,16 @@ class MainGUI:
 		else:
 			self.desText.configure(text="Didn't detect a pose from player.")
 		
+		#Move to next round counter
+		self.round = self.round + 1
 		self.titleVar.set("Pose Evaluation")
-		self.buttonPanel.button1.configure(text="Main Menu", command=lambda:MainGUI.updateToTitle(self))
+		if self.round < len(self.levels):	
+			# If we are not on the last image, give option to move to next image	
+			self.buttonPanel.button1.configure(text="Next Pose", command=lambda:MainGUI.updateToPose(self))
+		else:
+			# If we are done with all images in the level, give option to return to main menu
+			self.buttonPanel.button1.configure(text="Main Menu", command=lambda:MainGUI.updateToTitle(self))
+			
 		self.buttonPanel.button2.configure(text="Exit",command=self.root.quit)
 
 	def countDown(self, timer):
@@ -290,13 +290,15 @@ class MainGUI:
 		self.feed_label.configure(image=imgtk)		
 		self.root.after(10, self.camera_loop)
 
-	def mask_select(self, *args):
-		mask_img=cv2.imread(self.ddVar.get(), cv2.IMREAD_GRAYSCALE)
-		self.mask=cv2.threshold(mask_img, self.thresh, 255, cv2.THRESH_BINARY)[1]
-		img = Image.fromarray(self.mask)
-		imgtk = ImageTk.PhotoImage(image=img)
-		self.mask_label.imgtk = imgtk
-		self.mask_label.configure(image=imgtk)		
+	def levels_select(self, *args):
+		# grab poses from directory
+		curPath = self.path + self.ddVar.get()
+		print(curPath)
+		for r, d, f in os.walk(curPath):
+			for file in f:
+				if '.jpg' in file or '.png' in file:
+					self.levels.append(curPath + '/' + file)
+		print(self.levels)		
 		
 	def preprocess(self, img):
 		image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
