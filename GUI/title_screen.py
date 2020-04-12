@@ -42,6 +42,8 @@ class MainGUI:
 		self.mdelay_sec = 10
 		self.mtick = self.mdelay_sec
 		self.mask = None
+		self.calibrate = True # Flag to show calibration pose over camera feed
+		self.calibration_pose = cv2.imread('./images/t_pose.jpg', cv2.IMREAD_COLOR)
 		
 		#Loading model and model data
 		with open('./tasks/human_pose/human_pose.json', 'r') as f:
@@ -125,6 +127,9 @@ class MainGUI:
 		self.mask_label.pack_forget()
 		self.pose_label.pack_forget()
 
+		# Show wireframe and calibration pose on title screen
+		self.calibrate = True
+
 		# build title frame
 		self.titleVar.set("Pose Estimation Game")
 		self.desText.configure(text ="Please select an option from the right")
@@ -141,6 +146,9 @@ class MainGUI:
 
 		# unpack unused widgets
 		self.pose_label.pack_forget()
+
+		# Show only camera feed
+		self.calibrate = False
 
 		# Reset mask object
 		self.mask_label.configure(image='')
@@ -169,6 +177,9 @@ class MainGUI:
 		# unpack unused widgets
 		self.dropDown.pack_forget()
 		self.pose_label.pack_forget()
+
+		# Show only camera feed
+		self.calibrate = False
 
 		# Select mask to use for this round
 		mask_img=cv2.imread(self.levels[self.round], cv2.IMREAD_GRAYSCALE)
@@ -216,6 +227,10 @@ class MainGUI:
 					objcnt = objcnt+1
 
 
+		overlay = cv2.cvtColor(self.mask, cv2.COLOR_GRAY2RGB)
+		alpha = 0.3
+		cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0 , img)
+		
 		img = Image.fromarray(img)
 		imgtk = ImageTk.PhotoImage(image=img)
 		self.pose_label.imgtk = imgtk
@@ -246,6 +261,9 @@ class MainGUI:
 		return score
 	
 	def updateToEval(self):
+		# Show only camera feed
+		self.calibrate = False
+		
 		# Show image from pose estimation
 		self.pose_label.pack(side=Tk.LEFT)
 
@@ -284,6 +302,15 @@ class MainGUI:
 	def camera_loop(self):
 		img = self.camera.read()
 		self.img = img # Load image into context variable
+		if self.calibrate is True:
+			data = self.preprocess(img)
+			cmap, paf = self.model_trt(data)
+			cmap, paf = cmap.detach().cpu(), paf.detach().cpu()
+			counts, objects, peaks = self.parse_objects(cmap, paf)#, cmap_threshold=0.15, link_threshold=0.15)
+			self.draw_objects(img, counts, objects, peaks)
+			overlay = self.calibration_pose
+			alpha = 0.3
+			cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0 , img)
 		img = Image.fromarray(img)
 		imgtk = ImageTk.PhotoImage(image=img)
 		self.feed_label.imgtk = imgtk
