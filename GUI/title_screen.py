@@ -37,7 +37,7 @@ class MainGUI:
 		self.HEIGHT = 224
 		self.thresh = 127
 		self.round = 0
-		self.minimum_joints = 1
+		self.minimum_joints = 4
 		self.path = './images/'		
 		self.mdelay_sec = 10
 		self.mtick = self.mdelay_sec
@@ -129,6 +129,7 @@ class MainGUI:
 
 		# Show wireframe and calibration pose on title screen
 		self.calibrate = True
+		self.running = False
 
 		# build title frame
 		self.titleVar.set("Pose Estimation Game")
@@ -150,6 +151,7 @@ class MainGUI:
 
 		# Show only camera feed
 		self.calibrate = False
+		self.running = False
 
 		# Reset mask object
 		self.mask_label.configure(image='')
@@ -194,8 +196,9 @@ class MainGUI:
 
 
 		self.titleVar.set("Pose Now")
-		self.buttonPanel.button1.configure(text="Main Menu", command=MainGUI.blankCommand)
+		self.buttonPanel.button1.configure(text="Main Menu", command=lambda:MainGUI.updateToTitle(self))
 		self.buttonPanel.button2.configure(text=" ", command=MainGUI.blankCommand)
+		self.running = True
 		timer = 10
 		self.desText.configure(text = "Time to Evaluation: " + str(timer) + "s")
 		self.root.after(1000, lambda:MainGUI.countDown(self, timer))
@@ -302,12 +305,13 @@ class MainGUI:
 		self.buttonPanel.button2.configure(text="Exit",command=self.root.quit)
 
 	def countDown(self, timer):
-		self.desText.configure(text = "Time to Evaluation: " + str(timer) + "s")
-		timer = timer - 1
-		if(timer >= 0):
-			self.root.after(1000, lambda:MainGUI.countDown(self, timer))
-		else:
-			MainGUI.updateToEval(self)
+		if self.running is True:
+			self.desText.configure(text = "Time to Evaluation: " + str(timer) + "s")
+			timer = timer - 1
+			if(timer >= 0):
+				self.root.after(1000, lambda:MainGUI.countDown(self, timer))
+			else:
+				MainGUI.updateToEval(self)
 
 	#Camera Displays Here
 	def camera_loop(self):
