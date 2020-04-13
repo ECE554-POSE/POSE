@@ -142,6 +142,7 @@ class MainGUI:
 		# reset possible levels
 		self.levels = []
 		self.round = 0
+		self.total = 0
 		self.ddVar.set('Select a Choice')
 
 		# unpack unused widgets
@@ -272,14 +273,24 @@ class MainGUI:
 		
 		# Get a score based on correct points over mask
 		score = self.pose_score(calc_points)
+
+
 		
 		if score is not None:		
-			self.desText.configure(text="Pose Accuracy: " + str(score)+ "%")
+			pretext="Pose Accuracy: " + str(score)+ "%"
+			self.total = self.total + score
 		else:
-			self.desText.configure(text="Didn't detect a pose from player.")
+			pretext="Didn't detect a pose from player."
+			self.total = self.total + 0
 		
 		#Move to next round counter
 		self.round = self.round + 1
+
+		#Calculate average score and add text
+		avg_score = self.total/self.round		
+		totaltext = pretext+"\nAverage Score: " + str(avg_score)+"%"
+		self.desText.configure(text=totaltext)		
+		
 		self.titleVar.set("Pose Evaluation")
 		if self.round < len(self.levels):	
 			# If we are not on the last image, give option to move to next image	
