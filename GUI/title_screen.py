@@ -43,7 +43,7 @@ class MainGUI:
 		self.mtick = self.mdelay_sec
 		self.mask = None
 		self.calibrate = True # Flag to show calibration pose over camera feed
-		self.calibration_pose = cv2.imread('./images/t_pose.jpg', cv2.IMREAD_COLOR)
+		self.calibration_pose = cv2.imread('./images/cal_pose.jpg', cv2.IMREAD_COLOR)
 		
 		#Loading model and model data
 		with open('./tasks/human_pose/human_pose.json', 'r') as f:
@@ -280,7 +280,7 @@ class MainGUI:
 
 		
 		if score is not None:		
-			pretext="Pose Accuracy: " + str(score)+ "%"
+			pretext="Pose Accuracy: " + str(round(score, 2))+ "%"
 			self.total = self.total + score
 		else:
 			pretext="Didn't detect a pose from player."
@@ -291,18 +291,18 @@ class MainGUI:
 
 		#Calculate average score and add text
 		avg_score = self.total/self.round		
-		totaltext = pretext+"\nAverage Score: " + str(avg_score)+"%"
+		totaltext = pretext+"\nAverage Score: " + str(round(avg_score, 2))+"%"
 		self.desText.configure(text=totaltext)		
 		
 		self.titleVar.set("Pose Evaluation")
 		if self.round < len(self.levels):	
 			# If we are not on the last image, give option to move to next image	
 			self.buttonPanel.button1.configure(text="Next Pose", command=lambda:MainGUI.updateToPose(self))
+			self.buttonPanel.button2.configure(text="Main Menu", command=lambda:MainGUI.updateToTitle(self))
 		else:
 			# If we are done with all images in the level, give option to return to main menu
 			self.buttonPanel.button1.configure(text="Main Menu", command=lambda:MainGUI.updateToTitle(self))
-			
-		self.buttonPanel.button2.configure(text="Exit",command=self.root.quit)
+			self.buttonPanel.button2.configure(text="Exit",command=self.root.quit)
 
 	def countDown(self, timer):
 		if self.running is True:
